@@ -93,70 +93,97 @@ export default function Dashboard() {
         ))}
       </section>
 
-      <section>
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="font-bold text-slate-900 text-lg uppercase tracking-tight">
-            {view === 'active' ? 'Vacantes Recientes' : 'Vacantes Archivadas'}
-          </h3>
-          {view === 'active' && (
-            <Link to="/create-job" className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1">
-              Nueva Vacante <ArrowUpRight size={14} />
-            </Link>
-          )}
-        </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+        <div className="lg:col-span-2">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="font-bold text-slate-900 text-lg uppercase tracking-tight">
+              {view === 'active' ? 'Vacantes Recientes' : 'Vacantes Archivadas'}
+            </h3>
+            {view === 'active' && (
+              <Link to="/create-job" className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1">
+                Nueva Vacante <ArrowUpRight size={14} />
+              </Link>
+            )}
+          </div>
 
-        <div className="grid grid-cols-1 gap-4">
-          {jobs.length === 0 ? (
-            <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-slate-200">
-              <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
-                <Briefcase size={32} />
+          <div className="grid grid-cols-1 gap-4">
+            {jobs.length === 0 ? (
+              <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-slate-200">
+                <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
+                  <Briefcase size={32} />
+                </div>
+                <p className="text-slate-500">No hay vacantes en esta sección.</p>
+                {view === 'active' && <Link to="/create-job" className="text-indigo-600 font-semibold mt-2 inline-block">Crea tu primera vacante</Link>}
               </div>
-              <p className="text-slate-500">No hay vacantes en esta sección.</p>
-              {view === 'active' && <Link to="/create-job" className="text-indigo-600 font-semibold mt-2 inline-block">Crea tu primera vacante</Link>}
-            </div>
-          ) : (
-            jobs.map((job, index) => (
-              <motion.div
-                key={job.id}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.05 }}
-              >
-                <div className="group relative bg-white rounded-2xl border border-slate-100 shadow-sm hover:border-indigo-500 hover:shadow-md transition-all duration-200 p-6">
-                  <div className="flex items-center justify-between">
-                    <Link to={`/jobs/${job.id}`} className="flex-1 flex items-center gap-4">
-                      <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
-                        <Briefcase size={24} />
-                      </div>
-                      <div>
-                        <h4 className="text-lg font-bold text-slate-900 group-hover:text-indigo-600 transition-colors uppercase tracking-tight">{job.title}</h4>
-                        <div className="flex items-center gap-3 mt-1 text-sm text-slate-400">
-                          <span className="flex items-center gap-1"><Users size={14} /> Candidatos en revisión</span>
-                          <span>•</span>
-                          <span>{new Date(job.createdAt).toLocaleDateString()}</span>
+            ) : (
+              jobs.map((job, index) => (
+                <motion.div
+                  key={job.id}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                >
+                  <div className="group relative bg-white rounded-2xl border border-slate-100 shadow-sm hover:border-indigo-500 hover:shadow-md transition-all duration-200 p-6">
+                    <div className="flex items-center justify-between">
+                      <Link to={`/jobs/${job.id}`} className="flex-1 flex items-center gap-4">
+                        <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
+                          <Briefcase size={24} />
                         </div>
+                        <div>
+                          <h4 className="text-lg font-bold text-slate-900 group-hover:text-indigo-600 transition-colors uppercase tracking-tight">{job.title}</h4>
+                          <div className="flex items-center gap-3 mt-1 text-sm text-slate-400">
+                            <span className="flex items-center gap-1"><Users size={14} /> Activo</span>
+                            <span>•</span>
+                            <span>{new Date(job.createdAt).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                      </Link>
+                      
+                      <div className="flex items-center gap-4">
+                        <button 
+                          onClick={() => handleArchive(job.id)}
+                          className="p-2 text-slate-300 hover:text-red-500 transition-colors"
+                          title={view === 'active' ? "Archivar vacante" : "Eliminar permanentemente"}
+                        >
+                          <Archive size={20} />
+                        </button>
+                        <Link to={`/jobs/${job.id}`} className="text-slate-300 group-hover:text-indigo-300 group-hover:translate-x-1 transition-all">
+                          <ArrowUpRight size={24} />
+                        </Link>
                       </div>
-                    </Link>
-                    
-                    <div className="flex items-center gap-4">
-                       <button 
-                        onClick={() => handleArchive(job.id)}
-                        className="p-2 text-slate-300 hover:text-red-500 transition-colors"
-                        title={view === 'active' ? "Archivar vacante" : "Eliminar permanentemente"}
-                       >
-                         <Archive size={20} />
-                       </button>
-                       <Link to={`/jobs/${job.id}`} className="text-slate-300 group-hover:text-indigo-300 group-hover:translate-x-1 transition-all">
-                        <ArrowUpRight size={24} />
-                       </Link>
                     </div>
                   </div>
-                </div>
-              </motion.div>
-            ))
-          )}
+                </motion.div>
+              ))
+            )}
+          </div>
         </div>
-      </section>
+
+        <aside className="space-y-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-slate-900 text-sm uppercase tracking-widest">Últimos Candidatos</h3>
+          </div>
+          <div className="space-y-4">
+            {metrics?.recentCandidates?.length === 0 ? (
+              <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-100">
+                <p className="text-xs text-slate-400 italic">Esperando postulaciones...</p>
+              </div>
+            ) : (
+              metrics?.recentCandidates?.map((c: any) => (
+                <Link key={c.id} to={`/jobs/${c.jobId}`} className="block p-4 bg-white border border-slate-100 rounded-2xl shadow-sm hover:border-indigo-300 transition-all">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-bold text-slate-900 text-sm">{c.name}</span>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${c.fitScore > 80 ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+                      {c.fitScore}% Fit
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 truncate">Postulado en {c.jobId}</p>
+                </Link>
+              ))
+            )}
+          </div>
+        </aside>
+      </div>
     </motion.div>
   );
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { Briefcase, Users, Target, ArrowLeft, Upload, CheckCircle2, ChevronRight, Star } from "lucide-react";
+import { Briefcase, Users, Target, ArrowLeft, Upload, CheckCircle2, ChevronRight, Star, Edit3, Save, X } from "lucide-react";
 import { motion } from "motion/react";
 
 export default function JobDetail() {
@@ -8,6 +8,9 @@ export default function JobDetail() {
   const [job, setJob] = useState<any>(null);
   const [candidates, setCandidates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedTitle, setEditedTitle] = useState("");
+  const [editedDesc, setEditedDesc] = useState("");
 
   useEffect(() => {
     Promise.all([
@@ -15,9 +18,66 @@ export default function JobDetail() {
       fetch(`/api/jobs/${id}/candidates`).then(res => res.json())
     ]).then(([jobData, candidateData]) => {
       setJob(jobData);
+      setEditedTitle(jobData.title);
+      setEditedDesc(jobData.description);
       setCandidates(candidateData);
     }).finally(() => setLoading(false));
   }, [id]);
+
+  const handleSaveJob = async () => {
+    try {
+      const res = await fetch(`/api/jobs/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: editedTitle, description: editedDesc })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setJob(updated);
+        setIsEditing(false);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleManualUpload = async () => {
+    const name = prompt("Nombre del candidato:");
+    if (!name) return;
+    const email = prompt("Email del candidato:");
+    if (!email) return;
+
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf';
+    input.onchange = async (e: any) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = async () => {
+        const base64 = (reader.result as string).split(',')[1];
+        setLoading(true);
+        try {
+          const res = await fetch(`/api/jobs/${id}/candidates`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, email, cvBase64: base64 })
+          });
+          if (res.ok) {
+            const newCand = await res.json();
+            setCandidates(prev => [newCand, ...prev]);
+          }
+        } catch (err) {
+          console.error(err);
+        } finally {
+          setLoading(false);
+        }
+      };
+    };
+    input.click();
+  };
 
   if (loading) return (
     <div className="flex items-center justify-center h-[60vh]">
@@ -48,8 +108,51 @@ export default function JobDetail() {
               <span className="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest">Abierta</span>
               <span className="text-slate-400 text-sm">{new Date(job.createdAt).toLocaleDateString()}</span>
             </div>
-            <h2 className="text-4xl font-bold text-slate-900 tracking-tight">{job.title}</h2>
-            <p className="text-slate-500 mt-3 max-w-2xl leading-relaxed">{job.description}</p>
+            {isEditing ? (
+              <div className="space-y-4">
+                <input 
+                  value={editedTitle}
+                  onChange={e => setEditedTitle(e.target.value)}
+                  className="text-4xl font-bold text-slate-900 tracking-tight w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none focus:border-indigo-500 transition-all"
+                />
+                <textarea 
+                  value={editedDesc}
+                  onChange={e => setEditedDesc(e.target.value)}
+                  className="text-slate-500 mt-3 w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none focus:border-indigo-500 transition-all min-h-[100px]"
+                />
+                <div className="flex gap-2">
+                  <button 
+                    onClick={handleSaveJob}
+                    className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+                  >
+                    <Save size={16} /> Guardar Cambios
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setIsEditing(false);
+                      setEditedTitle(job.title);
+                      setEditedDesc(job.description);
+                    }}
+                    className="flex items-center gap-2 bg-white border border-slate-200 text-slate-500 px-4 py-2 rounded-lg font-bold text-sm hover:bg-slate-50 transition-all"
+                  >
+                    <X size={16} /> Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-4 group">
+                  <h2 className="text-4xl font-bold text-slate-900 tracking-tight">{job.title}</h2>
+                  <button 
+                    onClick={() => setIsEditing(true)}
+                    className="p-2 bg-slate-50 text-slate-400 rounded-full opacity-0 group-hover:opacity-100 transition-all hover:bg-indigo-50 hover:text-indigo-600"
+                  >
+                    <Edit3 size={18} />
+                  </button>
+                </div>
+                <p className="text-slate-500 mt-3 max-w-2xl leading-relaxed">{job.description}</p>
+              </>
+            )}
             
             <div className="mt-6 p-4 bg-white border border-slate-200 rounded-xl flex items-center justify-between">
               <div>
@@ -69,7 +172,10 @@ export default function JobDetail() {
               </button>
             </div>
           </div>
-          <button className="bg-white border border-slate-200 text-slate-700 px-6 py-3 rounded-xl font-bold hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm">
+          <button 
+            onClick={handleManualUpload}
+            className="bg-white border border-slate-200 text-slate-700 px-6 py-3 rounded-xl font-bold hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm"
+          >
             <Upload size={18} /> Subir CV (Manual)
           </button>
         </div>

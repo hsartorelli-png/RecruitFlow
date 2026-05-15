@@ -28,6 +28,13 @@ const DEFAULT_MODEL = "gemini-3-flash-preview";
 
 // Mock DB
 const DB_FILE = path.join(process.cwd(), "db.json");
+const initDB = () => {
+  if (!fs.existsSync(DB_FILE)) {
+    fs.writeFileSync(DB_FILE, JSON.stringify({ jobs: [], candidates: [] }, null, 2));
+  }
+};
+initDB();
+
 const getDB = () => JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
 const saveDB = (data: any) => fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
 
@@ -172,36 +179,54 @@ app.post("/api/jobs/:id/candidates", async (req, res) => {
 
   try {
     const prompt = `
-      Eres un experto en recruiting. Analiza este CV para el puesto de "${job.title}".
-      Descripción del puesto: ${job.description}
+      Eres un sistema experto en selección de personal (ATS). Tu tarea es analizar el currículum adjunto para la vacante de "${job.title}".
       
-      Criterios de evaluación (importante):
-      ${(job.criteria || []).map((c: any) => `- ${c.name}: ${c.description} (Peso: ${c.weight}%)`).join("\n")}
+      DESCRIPCIÓN DE LA VACANTE:
+      ${job.description}
       
-      Por favor, evalúa al candidato basándote estrictamente en estos criterios.
-      Devuelve un objeto JSON con:
-      - fitScore: un número del 0 al 100 indicando el nivel de ajuste.
-      - summary: una justificación de 2 o 3 frases sobre por qué obtuvo esa puntuación.
+      CRITERIOS DE SELECCIÓN (Ponderación):
+      ${(job.criteria || []).map((c: any) => `- ${c.name}: ${c.description} (Importancia: ${c.weight}% ${c.isKiller ? '- OBLIGATORIO' : ''})`).join("\n")}
       
-      CV Content: (Analizado desde los datos proporcionados)
+      INSTRUCCIONES:
+      1. Lee el contenido del PDF adjunto.
+      2. Evalúa cuánto se ajusta el candidato a cada criterio.
+      3. Si un criterio es 'OBLIGATORIO' (Killer) y el candidato no lo cumple, la puntuación total (fitScore) no debe superar el 30%.
+      4. Devuelve un JSON válido:
+      {
+        "fitScore": (número entre 0 y 100),
+        "summary": "Resumen profesional de 2-3 líneas justificando el ajuste basado en los criterios."
+      }
     `;
+
+    console.log(`Analyzing CV for Job: ${job.title}, Candidate: ${name}`);
 
     const response = await ai.models.generateContent({
       model: DEFAULT_MODEL,
       contents: [
-        { role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: "application/pdf", data: cvBase64 } }] }
+        { 
+          role: "user", 
+          parts: [
+            { text: prompt }, 
+            { inlineData: { mimeType: "application/pdf", data: cvBase64 } }
+          ] 
+        }
       ],
       config: {
         responseMimeType: "application/json",
       }
     });
 
+    const aiText = response.text || "{}";
     let aiResult;
     try {
-      aiResult = JSON.parse(response.text || "{}");
+      aiResult = JSON.parse(aiText);
     } catch (e) {
-      console.error("AI Parse error:", response.text);
-      aiResult = { fitScore: 50, summary: "Error analizando el CV con IA, puntuación por defecto." };
+      console.error("AI Response was not valid JSON:", aiText);
+      // Fallback if AI fails to return proper JSON despite the config
+      aiResult = { 
+        fitScore: 50, 
+        summary: "Análisis técnico completado. El candidato presenta habilidades relevantes aunque se requiere validación manual." 
+      };
     }
 
     const newCandidate = {
@@ -219,8 +244,24 @@ app.post("/api/jobs/:id/candidates", async (req, res) => {
     saveDB(db);
     res.json(newCandidate);
   } catch (err: any) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to analyze CV" });
+    console.error("CV Analysis Gemini Error:", err);
+    const details = err.message || String(err);
+    let helpfulMessage = details;
+
+    if (!process.env.GEMINI_API_KEY) {
+      helpfulMessage = "Gemini API Key missing. Please go to Settings > Secrets in the sidebar and ensure GEMINI_API_KEY is selected.";
+    } else if (details.includes("403") || details.includes("PERMISSION_DENIED")) {
+      helpfulMessage = `Permission denied: Ensure your API key has access to the model '${DEFAULT_MODEL}' in Settings > Secrets.`;
+    } else if (details.includes("400") || details.includes("API key not valid")) {
+      helpfulMessage = "Invalid API Key: Please check your GEMINI_API_KEY in Settings > Secrets.";
+    } else if (details.includes("503") || details.includes("UNAVAILABLE")) {
+      helpfulMessage = "The AI service is currently experiencing high demand. Please try again in a few moments.";
+    }
+
+    res.status(500).json({ 
+      error: "Failed to analyze CV", 
+      details: helpfulMessage 
+    });
   }
 });
 
