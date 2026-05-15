@@ -2,9 +2,11 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import { GoogleGenAI } from "@google/genai";
-import { createServer as createViteServer } from "vite";
+// import { createServer as createViteServer } from "vite"; // Removed static import
 
 const app = express();
+export default app;
+
 const PORT = 3000;
 
 app.use(express.json({ limit: '50mb' }));
@@ -268,6 +270,7 @@ app.post("/api/jobs/:id/candidates", async (req, res) => {
 // Vite Setup
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -284,4 +287,7 @@ async function startServer() {
   });
 }
 
-startServer();
+// Fix for Vercel: only listen if not on Vercel
+if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
+  startServer();
+}
