@@ -50,6 +50,24 @@ export default function JobDetail() {
             </div>
             <h2 className="text-4xl font-bold text-slate-900 tracking-tight">{job.title}</h2>
             <p className="text-slate-500 mt-3 max-w-2xl leading-relaxed">{job.description}</p>
+            
+            <div className="mt-6 p-4 bg-white border border-slate-200 rounded-xl flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Link para Candidatos</p>
+                <p className="text-xs font-mono text-indigo-600 truncate max-w-sm">
+                  {window.location.origin}/apply/{id}
+                </p>
+              </div>
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText(`${window.location.origin}/apply/${id}`);
+                  alert("Link copiado al portapapeles");
+                }}
+                className="text-xs font-bold bg-indigo-50 text-indigo-600 px-3 py-2 rounded-lg hover:bg-indigo-100 transition-colors"
+              >
+                Copiar Link
+              </button>
+            </div>
           </div>
           <button className="bg-white border border-slate-200 text-slate-700 px-6 py-3 rounded-xl font-bold hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm">
             <Upload size={18} /> Subir CV (Manual)

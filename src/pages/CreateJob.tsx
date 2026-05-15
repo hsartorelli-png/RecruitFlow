@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Sparkles, ArrowRight, ArrowLeft, CheckCircle2, AlertCircle } from "lucide-react";
+import { Sparkles, ArrowRight, ArrowLeft, CheckCircle2, AlertCircle, PlusCircle, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 export default function CreateJob() {
@@ -134,24 +134,74 @@ export default function CreateJob() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.1 }}
                     key={c.id} 
-                    className="p-4 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between group hover:bg-white hover:border-indigo-100 transition-all"
+                    className="p-5 bg-slate-50 border border-slate-100 rounded-xl relative group hover:bg-white hover:border-indigo-100 transition-all"
                   >
-                    <div className="flex items-center gap-4">
-                      <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold">
-                        {c.weight}%
+                    <button 
+                      onClick={() => setCriteria(prev => prev.filter(item => item.id !== c.id))}
+                      className="absolute top-2 right-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+
+                    <div className="flex flex-wrap gap-4 items-start">
+                      <div className="flex-1 min-w-[200px] space-y-3">
+                        <input 
+                          value={c.name}
+                          onChange={e => {
+                            const newCriteria = [...criteria];
+                            newCriteria[i].name = e.target.value;
+                            setCriteria(newCriteria);
+                          }}
+                          className="bg-transparent font-bold text-slate-800 text-sm w-full outline-none focus:text-indigo-600"
+                        />
+                        <textarea 
+                          value={c.description}
+                          onChange={e => {
+                            const newCriteria = [...criteria];
+                            newCriteria[i].description = e.target.value;
+                            setCriteria(newCriteria);
+                          }}
+                          className="bg-transparent text-[11px] text-slate-500 w-full outline-none focus:text-slate-800 resize-none h-12"
+                        />
                       </div>
-                      <div>
-                        <p className="font-bold text-slate-800 text-sm">{c.name}</p>
-                        <p className="text-[11px] text-slate-500 line-clamp-1">{c.description}</p>
+                      
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase">Peso</span>
+                          <input 
+                            type="number"
+                            value={c.weight}
+                            onChange={e => {
+                              const newCriteria = [...criteria];
+                              newCriteria[i].weight = parseInt(e.target.value) || 0;
+                              setCriteria(newCriteria);
+                            }}
+                            className="w-12 h-8 rounded bg-white border border-slate-200 text-xs font-bold text-center outline-none focus:border-indigo-500"
+                          />
+                        </div>
+                        <button 
+                          onClick={() => {
+                            const newCriteria = [...criteria];
+                            newCriteria[i].isKiller = !newCriteria[i].isKiller;
+                            setCriteria(newCriteria);
+                          }}
+                          className={`flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded uppercase transition-all ${
+                            c.isKiller ? 'text-red-500 bg-red-50' : 'text-slate-400 bg-slate-100'
+                          }`}
+                        >
+                          <AlertCircle size={10} /> {c.isKiller ? "Killer" : "Normal"}
+                        </button>
                       </div>
                     </div>
-                    {c.isKiller && (
-                      <span className="flex items-center gap-1 text-[10px] font-bold text-red-500 bg-red-50 px-2 py-1 rounded uppercase">
-                        <AlertCircle size={10} /> Excluyente
-                      </span>
-                    )}
                   </motion.div>
                 ))}
+                
+                <button 
+                  onClick={() => setCriteria([...criteria, { id: Date.now().toString(), name: "Nuevo Criterio", description: "Descripción del criterio...", weight: 10, isKiller: false }])}
+                  className="w-full py-4 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 font-bold text-sm hover:border-indigo-300 hover:text-indigo-500 transition-all flex items-center justify-center gap-2"
+                >
+                  <PlusCircle size={18} /> Añadir Criterio Manual
+                </button>
               </div>
 
               <div className="flex gap-4 mt-10">
