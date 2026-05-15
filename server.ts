@@ -26,42 +26,48 @@ app.use((err: any, req: any, res: any, next: any) => {
   });
 });
 
-// Serve static files and handle internal Vercel routing
+// Serve static files and handle routing
 const distPath = path.join(process.cwd(), "dist");
 
 async function startServer() {
-  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+  // Static files FIRST (but after API)
+  if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
+  }
+
+  // Vite middleware for development
+  if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
-  } else {
-    if (process.env.NODE_ENV === "production" || process.env.VERCEL) {
-      app.use(express.static(distPath));
-    }
   }
 
-  // Fallback for SPA
+  // Fallback for SPA (MUST be last)
   app.get("*", (req, res) => {
+    // Prevent catching API routes that don't exist
     if (req.path.startsWith('/api')) {
-      return res.status(404).json({ error: "API not found" });
+      return res.status(404).json({ error: "API route not found" });
     }
+    
+    // Serve index.html for all other routes (SPA)
     const indexHtml = path.join(distPath, "index.html");
     if (fs.existsSync(indexHtml)) {
       res.sendFile(indexHtml);
+    } else if (process.env.NODE_ENV === "production") {
+      res.status(404).send("Frontend build not found");
     } else {
-      // In dev mode without build, Vite middleware handles this, but if we fall through:
-      res.status(404).send("Not found");
+      // In dev mode, Vite middleware should have caught this.
+      // If we are here, something is wrong.
+      res.status(404).send("Resource not found");
     }
   });
 
-  if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
-  }
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://0.0.0.0:${PORT}`);
+  });
 }
 
 startServer();
