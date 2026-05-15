@@ -1,0 +1,8 @@
+{
+  "name": "RecruitFlow ATS",
+  "description": "Applicant Tracking System with AI-powered resume analysis and job criteria suggestions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
