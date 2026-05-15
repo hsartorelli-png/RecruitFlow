@@ -2,66 +2,92 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import { GoogleGenAI } from "@google/genai";
-// import { createServer as createViteServer } from "vite"; // Removed static import
 
 const app = express();
 export default app;
 
 const PORT = 3000;
 
+// Middleware
 app.use(express.json({ limit: '50mb' }));
+
+// Create a router for API
+const apiRouter = express.Router();
 
 // Gemini Setup
 const API_KEY = process.env.GEMINI_API_KEY;
-if (!API_KEY) {
-  console.warn("⚠️ GEMINI_API_KEY no detectada. La IA no funcionará hasta que la configures en Settings > Secrets.");
-}
-
 const ai = new GoogleGenAI({
   apiKey: API_KEY || "NO_KEY",
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    }
-  }
 });
 
 const DEFAULT_MODEL = "gemini-3-flash-preview"; 
 
-// Mock DB
+// Mock DB logic
 const DB_FILE = path.join(process.cwd(), "db.json");
+let memoryDB: any = { jobs: [], candidates: [] };
+
 const initDB = () => {
-  if (!fs.existsSync(DB_FILE)) {
-    fs.writeFileSync(DB_FILE, JSON.stringify({ jobs: [], candidates: [] }, null, 2));
+  if (process.env.VERCEL) {
+    try {
+      if (fs.existsSync(DB_FILE)) {
+        memoryDB = JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
+      }
+    } catch (e) {
+      console.warn("Vercel environment: using memory DB.");
+    }
+  } else {
+    if (!fs.existsSync(DB_FILE)) {
+      fs.writeFileSync(DB_FILE, JSON.stringify({ jobs: [], candidates: [] }, null, 2));
+    }
+    try {
+      memoryDB = JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
+    } catch (e) {
+      memoryDB = { jobs: [], candidates: [] };
+    }
   }
 };
 initDB();
 
-const getDB = () => JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
-const saveDB = (data: any) => fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+const getDB = () => {
+  if (process.env.VERCEL) return memoryDB;
+  try {
+    return JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
+  } catch (e) {
+    return memoryDB;
+  }
+};
 
-// API Routes
-app.get("/api/jobs", (req, res) => {
+const saveDB = (data: any) => {
+  memoryDB = data;
+  if (!process.env.VERCEL) {
+    try {
+      fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+    } catch (e) {
+      console.error("Failed to save to db.json", e);
+    }
+  }
+};
+
+// API ROUTES
+apiRouter.get("/jobs", (req, res) => {
   const db = getDB();
-  // Filter by status if needed, default to active
   const { status } = req.query;
-  let jobs = db.jobs;
+  let jobs = db.jobs || [];
   if (status) {
     jobs = jobs.filter((j: any) => j.status === status);
   } else {
-    // By default return only active or those without status (compatibility)
     jobs = jobs.filter((j: any) => j.status !== "archived");
   }
   res.json(jobs);
 });
 
-app.get("/api/metrics", (req, res) => {
+apiRouter.get("/metrics", (req, res) => {
   const db = getDB();
-  const activeJobs = db.jobs.filter((j: any) => j.status !== "archived");
-  const archivedJobs = db.jobs.filter((j: any) => j.status === "archived");
-  const totalCandidates = db.candidates.length;
+  const activeJobs = (db.jobs || []).filter((j: any) => j.status !== "archived");
+  const archivedJobs = (db.jobs || []).filter((j: any) => j.status === "archived");
+  const totalCandidates = (db.candidates || []).length;
   const avgFit = totalCandidates > 0 
-    ? Math.round(db.candidates.reduce((acc: number, c: any) => acc + c.fitScore, 0) / totalCandidates) 
+    ? Math.round((db.candidates || []).reduce((acc: number, c: any) => acc + (c.fitScore || 0), 0) / totalCandidates) 
     : 0;
 
   res.json({
@@ -69,18 +95,18 @@ app.get("/api/metrics", (req, res) => {
     archivedJobsCount: archivedJobs.length,
     totalCandidates,
     avgFit,
-    recentCandidates: db.candidates.slice(-5).reverse()
+    recentCandidates: (db.candidates || []).slice(-5).reverse()
   });
 });
 
-app.get("/api/jobs/:id", (req, res) => {
+apiRouter.get("/jobs/:id", (req, res) => {
   const db = getDB();
-  const job = db.jobs.find((j: any) => j.id === req.params.id);
+  const job = (db.jobs || []).find((j: any) => j.id === req.params.id);
   if (!job) return res.status(404).json({ error: "Job not found" });
   res.json(job);
 });
 
-app.post("/api/jobs", (req, res) => {
+apiRouter.post("/jobs", (req, res) => {
   const db = getDB();
   const newJob = {
     ...req.body,
@@ -88,14 +114,15 @@ app.post("/api/jobs", (req, res) => {
     status: "active",
     createdAt: new Date().toISOString(),
   };
+  if (!db.jobs) db.jobs = [];
   db.jobs.push(newJob);
   saveDB(db);
   res.json(newJob);
 });
 
-app.put("/api/jobs/:id", (req, res) => {
+apiRouter.put("/jobs/:id", (req, res) => {
   const db = getDB();
-  const index = db.jobs.findIndex((j: any) => j.id === req.params.id);
+  const index = (db.jobs || []).findIndex((j: any) => j.id === req.params.id);
   if (index === -1) return res.status(404).json({ error: "Job not found" });
   
   db.jobs[index] = { ...db.jobs[index], ...req.body, updatedAt: new Date().toISOString() };
@@ -103,191 +130,99 @@ app.put("/api/jobs/:id", (req, res) => {
   res.json(db.jobs[index]);
 });
 
-app.delete("/api/jobs/:id", (req, res) => {
+apiRouter.delete("/jobs/:id", (req, res) => {
   const db = getDB();
-  const index = db.jobs.findIndex((j: any) => j.id === req.params.id);
+  const index = (db.jobs || []).findIndex((j: any) => j.id === req.params.id);
   if (index === -1) return res.status(404).json({ error: "Job not found" });
   
-  // Logical delete (Archive)
   db.jobs[index].status = "archived";
   db.jobs[index].archivedAt = new Date().toISOString();
   saveDB(db);
   res.json({ message: "Job archived" });
 });
 
-app.post("/api/jobs/suggest-criteria", async (req, res) => {
+apiRouter.post("/jobs/suggest-criteria", async (req, res) => {
   const { title, description } = req.body;
-  try {
-    const prompt = `
-      Eres un experto en Recruiting. Basado en el puesto de "${title}" y su descripción "${description}",
-      sugiere una lista de 5 a 8 criterios de evaluación técnicos y blandos.
-      Cada criterio debe tener: 
-      - name: nombre corto
-      - description: qué se evalúa
-      - weight: importancia del 1 al 100
-      - isKiller: booleano que indica si es un requisito indispensable.
-      
-      Devuelve SOLO un array JSON de objetos.
-    `;
+  if (!API_KEY || API_KEY === "NO_KEY") {
+    return res.status(500).json({ error: "IA no configurada. Por favor, añade GEMINI_API_KEY en Vercel." });
+  }
 
+  try {
+    const prompt = `Sugiere 5-8 criterios para el puesto "${title}": ${description}. Devuelve JSON: [{name, description, weight, isKiller}]`;
     const response = await ai.models.generateContent({
       model: DEFAULT_MODEL,
       contents: [{ text: prompt }],
-      config: {
-        responseMimeType: "application/json",
-      }
+      config: { responseMimeType: "application/json" }
     });
-
-    let result;
-    try {
-      result = JSON.parse(response.text || "[]");
-    } catch (e) {
-      console.error("Failed to parse Gemini response as JSON:", response.text);
-      throw new Error("Invalid response from IA");
-    }
-    res.json(result);
+    res.json(JSON.parse(response.text || "[]"));
   } catch (error: any) {
-    console.error("Gemini Error Details:", error);
-    const details = error.message || String(error);
-    let helpfulMessage = details;
-
-    if (!process.env.GEMINI_API_KEY) {
-      helpfulMessage = "Gemini API Key missing. Please go to Settings > Secrets in the sidebar and ensure GEMINI_API_KEY is selected.";
-    } else if (details.includes("403") || details.includes("PERMISSION_DENIED")) {
-      helpfulMessage = `Permission denied: Ensure your API key has access to the model '${DEFAULT_MODEL}' in Settings > Secrets.`;
-    } else if (details.includes("400") || details.includes("API key not valid")) {
-      helpfulMessage = "Invalid API Key: Please check your GEMINI_API_KEY in Settings > Secrets.";
-    }
-
-    res.status(500).json({ 
-      error: "Failed to suggest criteria", 
-      details: helpfulMessage 
-    });
+    res.status(500).json({ error: "Error de IA", details: error.message });
   }
 });
 
-app.get("/api/jobs/:id/candidates", (req, res) => {
+apiRouter.get("/jobs/:id/candidates", (req, res) => {
   const db = getDB();
-  const candidates = db.candidates.filter((c: any) => c.jobId === req.params.id);
+  const candidates = (db.candidates || []).filter((c: any) => c.jobId === req.params.id);
   res.json(candidates);
 });
 
-app.post("/api/jobs/:id/candidates", async (req, res) => {
+apiRouter.post("/jobs/:id/candidates", async (req, res) => {
   const db = getDB();
-  const job = db.jobs.find((j: any) => j.id === req.params.id);
+  const job = (db.jobs || []).find((j: any) => j.id === req.params.id);
   if (!job) return res.status(404).json({ error: "Job not found" });
 
   const { name, email, cvBase64 } = req.body;
-
   try {
-    const prompt = `
-      Eres un sistema experto en selección de personal (ATS). Tu tarea es analizar el currículum adjunto para la vacante de "${job.title}".
-      
-      DESCRIPCIÓN DE LA VACANTE:
-      ${job.description}
-      
-      CRITERIOS DE SELECCIÓN (Ponderación):
-      ${(job.criteria || []).map((c: any) => `- ${c.name}: ${c.description} (Importancia: ${c.weight}% ${c.isKiller ? '- OBLIGATORIO' : ''})`).join("\n")}
-      
-      INSTRUCCIONES:
-      1. Lee el contenido del PDF adjunto.
-      2. Evalúa cuánto se ajusta el candidato a cada criterio.
-      3. Si un criterio es 'OBLIGATORIO' (Killer) y el candidato no lo cumple, la puntuación total (fitScore) no debe superar el 30%.
-      4. Devuelve un JSON válido:
-      {
-        "fitScore": (número entre 0 y 100),
-        "summary": "Resumen profesional de 2-3 líneas justificando el ajuste basado en los criterios."
-      }
-    `;
-
-    console.log(`Analyzing CV for Job: ${job.title}, Candidate: ${name}`);
-
+    const prompt = `Analiza este CV para ${job.title}. Criterios: ${JSON.stringify(job.criteria)}. Devuelve JSON: {fitScore, summary}`;
     const response = await ai.models.generateContent({
       model: DEFAULT_MODEL,
-      contents: [
-        { 
-          role: "user", 
-          parts: [
-            { text: prompt }, 
-            { inlineData: { mimeType: "application/pdf", data: cvBase64 } }
-          ] 
-        }
-      ],
-      config: {
-        responseMimeType: "application/json",
-      }
+      contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: "application/pdf", data: cvBase64 } }] }],
+      config: { responseMimeType: "application/json" }
     });
-
-    const aiText = response.text || "{}";
-    let aiResult;
-    try {
-      aiResult = JSON.parse(aiText);
-    } catch (e) {
-      console.error("AI Response was not valid JSON:", aiText);
-      // Fallback if AI fails to return proper JSON despite the config
-      aiResult = { 
-        fitScore: 50, 
-        summary: "Análisis técnico completado. El candidato presenta habilidades relevantes aunque se requiere validación manual." 
-      };
-    }
-
+    const aiResult = JSON.parse(response.text || "{}");
     const newCandidate = {
       id: Math.random().toString(36).substr(2, 9),
       jobId: req.params.id,
-      name,
-      email,
-      fitScore: aiResult.fitScore,
-      summary: aiResult.summary,
+      name, email,
+      fitScore: aiResult.fitScore || 50,
+      summary: aiResult.summary || "Analizado.",
       status: "In Review",
       appliedAt: new Date().toISOString(),
     };
-
+    if (!db.candidates) db.candidates = [];
     db.candidates.push(newCandidate);
     saveDB(db);
     res.json(newCandidate);
   } catch (err: any) {
-    console.error("CV Analysis Gemini Error:", err);
-    const details = err.message || String(err);
-    let helpfulMessage = details;
-
-    if (!process.env.GEMINI_API_KEY) {
-      helpfulMessage = "Gemini API Key missing. Please go to Settings > Secrets in the sidebar and ensure GEMINI_API_KEY is selected.";
-    } else if (details.includes("403") || details.includes("PERMISSION_DENIED")) {
-      helpfulMessage = `Permission denied: Ensure your API key has access to the model '${DEFAULT_MODEL}' in Settings > Secrets.`;
-    } else if (details.includes("400") || details.includes("API key not valid")) {
-      helpfulMessage = "Invalid API Key: Please check your GEMINI_API_KEY in Settings > Secrets.";
-    } else if (details.includes("503") || details.includes("UNAVAILABLE")) {
-      helpfulMessage = "The AI service is currently experiencing high demand. Please try again in a few moments.";
-    }
-
-    res.status(500).json({ 
-      error: "Failed to analyze CV", 
-      details: helpfulMessage 
-    });
+    res.status(500).json({ error: "Error analizando CV" });
   }
 });
 
-// Vite Setup
-async function startServer() {
-  if (process.env.NODE_ENV !== "production") {
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => res.sendFile(path.join(distPath, "index.html")));
-  }
+// Mount API
+app.use("/api", apiRouter);
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+// Serve static files and handle internal Vercel routing
+const distPath = path.join(process.cwd(), "dist");
+if (process.env.NODE_ENV === "production") {
+  app.use(express.static(distPath));
 }
 
-// Fix for Vercel: only listen if not on Vercel
+// Fallback for SPA
+app.get("*", (req, res) => {
+  if (req.path.startsWith('/api')) {
+    // If we're here, it means the router didn't catch the /api route
+    // On Vercel, paths might be prefix-stripped or preserved. Try fallback matching.
+    return res.status(404).json({ error: "API not found" });
+  }
+  if (fs.existsSync(path.join(distPath, "index.html"))) {
+    res.sendFile(path.join(distPath, "index.html"));
+  } else {
+    res.status(404).send("Not found");
+  }
+});
+
 if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
-  startServer();
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on port ${PORT}`);
+  });
 }
